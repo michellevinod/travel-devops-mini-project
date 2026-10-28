@@ -5,43 +5,54 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                echo 'Source code retrieved from GitHub'
+                checkout scm
                 sh 'git log -1 --oneline'
             }
         }
 
-        stage('Verify Project Files') {
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t travel-booking:ci .'
+            }
+        }
+
+        stage('API Tests') {
             steps {
                 sh '''
-                    test -f app.py
-                    test -f requirements.txt
-                    test -f tests/test_api.py
-                    test -f tests/test_ui.py
-                    test -f Dockerfile
-                    test -f Jenkinsfile
-                    echo "Required project files verified."
+                    docker run --rm \
+                      --network host \
+                      -v "$WORKSPACE:/app" \
+                      -w /app \
+                      python:3.11-slim \
+                      sh -c "pip install -r requirements.txt pytest && APP_URL=http://host.docker.internal:5000 python -m pytest tests/test_api.py -v"
                 '''
             }
         }
 
-        stage('Test Environment Status') {
+        stage('Selenium UI Tests') {
             steps {
-                echo 'API tests: 5 passed locally'
-                echo 'Selenium UI test: passed locally'
-                echo 'Note: tests must run in a configured agent to count as Jenkins-executed tests.'
+                sh '''
+                    docker run --rm \
+                      --network host \
+                      -v "$WORKSPACE:/app" \
+                      -w /app \
+                      python:3.11-slim \
+                      sh -c "pip install -r requirements.txt pytest selenium && SELENIUM_URL=http://host.docker.internal:4444/wd/hub UI_APP_URL=http://host.docker.internal:5000 python -m pytest tests/test_ui.py -v"
+                '''
             }
         }
 
-        stage('Deployment Gate') {
+        stage('Deploy') {
             steps {
-                echo 'Deployment is gated behind successful pipeline stages.'
+                echo 'All automated tests passed. Deployment stage reached.'
+                sh 'docker compose up -d --build app prometheus grafana'
             }
         }
     }
 
     post {
         success {
-            echo 'Pipeline stages completed successfully.'
+            echo 'CI/CD pipeline completed successfully.'
         }
         failure {
             echo 'Pipeline failed. Deployment stage was skipped.'
