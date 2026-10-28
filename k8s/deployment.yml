@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: travel-booking
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: travel-booking
+  template:
+    metadata:
+      labels:
+        app: travel-booking
+    spec:
+      containers:
+        - name: app
+          image: travel-booking:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: travel-booking
+spec:
+  selector:
+    app: travel-booking
+  ports:
+    - port: 5000
+      targetPort: 5000
+  type: NodePort
